@@ -180,6 +180,7 @@ try {
         # 各種イベントログを抽出し一時保存先に出力しファイルリストに追加
         $logcategorylist |%{$filelist += get-evtxlog $_ $eventlogtempfolder}
 
+
     #  S3 バケットに送信
         # ファイルリスト内のファイルを S3 に送信
         $filelist |%{put-to-s3 $_}
