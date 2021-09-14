@@ -1,7 +1,8 @@
 <#
 ・処理概要
+1. イベントログの保存先となる S3 バケット内のパスを設定する ※Windows-Logs/accountid=<アカウント番号>/region=<リージョン>/<インスタンスID>/<yyyy-MMdd-HHmm_ss形式の現在時刻>
 1. 指定した期間のイベントログ(Application , System , Security) を抽出し evtx 形式にてEC2のローカルに一時保存する
-2. 1 のファイルを指定した S3 バケットに 転送する ※バケット内の保存先パス：Windows-Logs/accountid=<アカウント番号>/region=<リージョン>/<インスタンスID>/<yyyy-MMdd-HHmm_ss形式の現在時刻>
+2. 2 のファイルを指定した S3 バケットの 1のパスに送信する
 3. 1 の一時保存ファイルを削除する
 ※途中で処理に失敗した場合はイベントログにエラー内容を出力し処理を中断する
 
@@ -28,14 +29,14 @@
 # イベントログの送信先 S3 バケット名
 $s3bucketname = "01-recieve"
 
-# S3 バケットに送信する一日分のイベントログを一時保存する場所 ※無い場合はこのスクリプトで作成します
-$eventlogtempfolder = "C:\eventlog-for-s3-copy"
-
-# 出力するログの種別 (Application , System , Security)
-$logcategory="Application"
+# 取得対象イベントログ (Application , System , Security)
+$logcategorylist = "Application","System","Security"
 
 # 抽出する期間 (処理開始時間を起点に過去 xx 日分)
 $period = 3 # 3日分
+
+# S3 バケットに送信する一日分のイベントログを一時保存する場所 ※無い場合はこのスクリプトで作成しますのでこのままで構いません
+$eventlogtempfolder = "C:\eventlog-for-s3-copy"
 
 
 # イベントログ出力関数を定義
@@ -84,26 +85,49 @@ Event/System/TimeCreated[@SystemTime<'$endUtcTime']
         # 引数は、ログ種別、"LogName"(FilePathかLogName)、クエリ、出力ファイル
         $evsession.ExportLog($logname,"LogName",$filter,$outfile)
 
+        # 出力情報をメッセージ出力
+        $geteventlogmessage =  "イベントログの一時保存ファイルは $eventlogtempfolder/$outfilename です"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$geteventlogmessage"
+
         # 出力ファイル名(パスなし) を返す
         return $outfilename
 
 }
 
+# S3 に送信する関数
+function put-to-s3 ($outfilename) {
+    # S3 バケットに送信
 
-function get-evtxlog ($logname,$outpath) {
+        # 送信
+          # S3 への put 権限が必要
+        Write-S3Object -BucketName $s3bucketname -Key "$s3bucketpath/$outfilename" -File $eventlogtempfolder/$outfilename
+
+        # 送信後メッセージ出力
+        $s3message =  "イベントログ の S3 への送信が成功しました 送信先： $s3bucketfullpath/$outfilename"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$s3message"
+
+
+    # 一時保存ファイルを削除
+        # 削除
+        Remove-Item -Path $eventlogtempfolder/$outfilename -Force
+
+        # 一時保存ファイルの削除後メッセージ出力
+        $delmessage =  "一時保存ファイルを削除しました 対象： $eventlogtempfolder/$outfilename"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$delmessage"
+
 }
 
 # 処理実行
 try {
     # 開始メッセージ出力
 
-        # $logcategory ログ に 本処理の ソース がない場合に追加
+        # Application ログ に 本処理の ソース がない場合に追加
         $eventlogsource = "s3-copy-script"
-        if ([System.Diagnostics.EventLog]::SourceExists($eventlogsource) -eq $false){ New-EventLog -LogName $logcategory -Source $eventlogsource }
+        if ([System.Diagnostics.EventLog]::SourceExists($eventlogsource) -eq $false){ New-EventLog -LogName "Application" -Source $eventlogsource }
 
         # 開始メッセージ出力
-        $startmessage =  "$logcategory ログ の S3 への送信を開始します"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$startmessage"
+        $startmessage =  "イベントログ の S3 への送信を開始します"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$startmessage"
 
 
     # S3 バケットのパス設定
@@ -131,56 +155,37 @@ try {
         $s3bucketfullpath = "s3://$s3bucketname/$s3bucketpath"
 
         # パス情報をメッセージ出力
-        $s3pathmessage =  "$logcategory ログの送信先は $s3bucketfullpath/ です"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$s3pathmessage"
+        $s3pathmessage =  "イベントログの送信先は $s3bucketfullpath/ です"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$s3pathmessage"
 
 
-    # S3 バケットに送信するイベントログを抽出し一時保存先に出力
-
+    # 各種イベントログを抽出し一時保存先に出力
         # 出力先が無い場合は作成
         if ( -not (Test-Path $eventlogtempfolder) ) { mkdir $eventlogtempfolder }
 
-        # 対象のイベントログを取得
-        $outfilename = get-evtxlog $logcategory $eventlogtempfolder
+        # S3 バケットに送信するためのファイルリストを作成
+        $filelist = @()
+        # 各種イベントログを抽出し一時保存先に出力しファイルリストに追加
+        $logcategorylist |%{$filelist += get-evtxlog $_ $eventlogtempfolder}
 
-        # 出力情報をメッセージ出力
-        $geteventlogmessage =  "$logcategory ログの一時保存ファイルは $eventlogtempfolder/$outfilename です"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$geteventlogmessage"
-
-
-    # S3 バケットに送信
-
-        # 送信
-          # S3 への put 権限が必要
-        Write-S3Object -BucketName $s3bucketname -Key "$s3bucketpath/$outfilename" -File $eventlogtempfolder/$outfilename
-
-        # 送信後メッセージ出力
-        $s3message =  "$logcategory ログ の S3 への送信が成功しました 送信先： $s3bucketfullpath/$outfilename"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$s3message"
-
-
-    # 一時保存ファイルを削除
-        # 削除
-        Remove-Item -Path $eventlogtempfolder/$outfilename -Force
-
-        # 一時保存ファイルの削除後メッセージ出力
-        $delmessage =  "一時保存ファイルを削除しました 対象： $eventlogtempfolder/$outfilename"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$delmessage"
+    #  S3 バケットに送信
+        # ファイルリスト内のファイルを S3 に送信
+        $filelist |%{put-to-s3 $_}
 
 
     # 終了メッセージ出力
 
         # 終了メッセージ出力
-        $endmessage =  "$logcategory ログ の S3 への送信を終了します"
-        Write-EventLog -LogName $logcategory -EntryType Information -Source $eventlogsource -EventId 0 -Message "$endmessage"
+        $endmessage =  "イベントログ の S3 への送信を終了します"
+        Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$endmessage"
 
 } catch {
     # 異常メッセージ出力
 
         # 異常メッセージ出力
-        $Failuremessage =  "$logcategory ログ の S3 への送信が異常終了しました"
-        Write-EventLog -LogName $logcategory -EntryType Error -Source $eventlogsource -EventId 0 -Message "$Failuremessage $error"
+        $Failuremessage =  "イベントログ の S3 への送信が異常終了しました"
+        Write-EventLog -LogName "Application" -EntryType Error -Source $eventlogsource -EventId 0 -Message "$Failuremessage $error"
 
         # 処理中断
-        #throw $error
+        throw "イベントログ の S3 への送信が異常終了しました $error"
 }
