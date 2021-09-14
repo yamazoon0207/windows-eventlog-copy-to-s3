@@ -57,7 +57,6 @@ function get-evtxlog ($logname,$outpath) {
 
 # 開始日付(100日前)と終了日付(今日)を取得し、
 # イベントログの選択に使用するクエリ(XPATH形式)に格納する
-
         # 開始日付指定(100日前を指定する場合、100と記述する)
         $fromDay = $period
 
@@ -78,7 +77,6 @@ Event/System/TimeCreated[@SystemTime<'$endUtcTime']
 "@
 
 # 出力ファイル名を作成しておく
-
         # yyyy-MMdd-HHmm-ss形式の今日日付(出力ファイルの名前用)
         $YYYYMMDD = $endTime.ToString("yyyy-MMdd-HHmm-ss")
 
@@ -89,7 +87,6 @@ Event/System/TimeCreated[@SystemTime<'$endUtcTime']
         $outfilename = "${logname}_${YYYYMMDD}.evtx"
 
 # .Netクラスのメソッドを使って出力
-
         # System.Diagnostics.Eventing.Reader.EventLogSession クラスをオブジェクト化
         $evsession = New-Object -TypeName System.Diagnostics.Eventing.Reader.EventLogSession
 
@@ -103,13 +100,11 @@ Event/System/TimeCreated[@SystemTime<'$endUtcTime']
 
         # 出力ファイル名(パスなし) を返す
         return $outfilename
-
 }
 
 # S3 に送信する関数
 function put-to-s3 ($outfilename) {
     # S3 バケットに送信
-
         # 送信
           # S3 への put 権限が必要
         Write-S3Object -BucketName $s3bucketname -Key "$s3bucketpath/$outfilename" -File $eventlogtempfolder/$outfilename
@@ -118,7 +113,6 @@ function put-to-s3 ($outfilename) {
         $s3message =  "イベントログ の S3 への送信が成功しました 送信先： $s3bucketfullpath/$outfilename"
         Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$s3message"
 
-
     # 一時保存ファイルを削除
         # 削除
         Remove-Item -Path $eventlogtempfolder/$outfilename -Force
@@ -126,13 +120,11 @@ function put-to-s3 ($outfilename) {
         # 一時保存ファイルの削除後メッセージ出力
         $delmessage =  "一時保存ファイルを削除しました 対象： $eventlogtempfolder/$outfilename"
         Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$delmessage"
-
 }
 
 # 処理実行
 try {
     # 開始メッセージ出力
-
         # Application ログ に 本処理の ソース がない場合に追加
         $eventlogsource = "s3-copy-script"
         if ([System.Diagnostics.EventLog]::SourceExists($eventlogsource) -eq $false){ New-EventLog -LogName "Application" -Source $eventlogsource }
@@ -143,7 +135,6 @@ try {
 
 
     # S3 バケットのパス設定
-
         # インスタンスメタデータから情報を取得するための token を取得
         $token = Invoke-RestMethod -Headers @{"X-aws-ec2-metadata-token-ttl-seconds" = "21600"} -Method PUT –Uri http://169.254.169.254/latest/api/token
 
@@ -193,7 +184,6 @@ try {
 
 } catch {
     # 異常メッセージ出力
-
         # 異常メッセージ出力
         $Failuremessage =  "イベントログ の S3 への送信が異常終了しました"
         Write-EventLog -LogName "Application" -EntryType Error -Source $eventlogsource -EventId 0 -Message "$Failuremessage $error"
