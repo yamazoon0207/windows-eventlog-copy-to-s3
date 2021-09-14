@@ -1,9 +1,21 @@
 <#
 ・処理概要
+指定日数分のイベントログ (対象は Application , System , Security のみ) を evtx 形式にして出力し S3 バケットの日付つきフォルダに保存する
+S3 ではライフサイクルポリシーを 2年に設定しておき 2年間保管する
+
+保存イメージ
+    s3://BuckekName/20210914/Application_2021-0914-0446-30.evtx
+    s3://BuckekName/20210914/Security_2021-0914-0446-30.evtx
+    s3://BuckekName/20210914/System_2021-0914-0446-30.evtx
+    s3://BuckekName/20210915/Application_2021-0915-0446-31.evtx
+    s3://BuckekName/20210915/Security_2021-0915-0446-31.evtx
+    s3://BuckekName/20210915/System_2021-0915-0446-31.evtx
+    ・・・・ 2 年分保存・・・・
+
 1. イベントログの保存先となる S3 バケット内のパスを設定する ※Windows-Logs/accountid=<アカウント番号>/region=<リージョン>/<インスタンスID>/<yyyy-MMdd-HHmm_ss形式の現在時刻>
-1. 指定した期間のイベントログ(Application , System , Security) を抽出し evtx 形式にてEC2のローカルに一時保存する
-2. 2 のファイルを指定した S3 バケットの 1のパスに送信する
-3. 1 の一時保存ファイルを削除する
+2. 指定した期間のイベントログ(Application , System , Security) を抽出し evtx 形式にてEC2のローカルに一時保存する
+3. 2 のファイルを指定した S3 バケットの 1のパスに送信する
+4. 1 の一時保存ファイルを削除する
 ※途中で処理に失敗した場合はイベントログにエラー内容を出力し処理を中断する
 
 ・利用方法
