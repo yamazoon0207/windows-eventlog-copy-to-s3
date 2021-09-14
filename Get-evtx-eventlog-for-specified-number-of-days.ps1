@@ -187,7 +187,6 @@ try {
 
 
     # 終了メッセージ出力
-
         # 終了メッセージ出力
         $endmessage =  "イベントログ の S3 への送信を終了します"
         Write-EventLog -LogName "Application" -EntryType Information -Source $eventlogsource -EventId 0 -Message "$endmessage"
